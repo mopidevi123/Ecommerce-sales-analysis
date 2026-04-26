@@ -1,92 +1,134 @@
-# E-Commerce Sales Analysis Dashboard
+E-Commerce Sales Analysis (UK Retail)
+An end-to-end data analytics project analyzing transactional sales data from a UK-based online retailer — uncovering revenue trends, top products, customer behaviour, and geographic concentration, with strategic growth recommendations.
+---
+Problem Statement
+A UK-based online retail business wants to understand:
+How is revenue trending? — Are sales growing month-over-month?
+What products drive volume? — Which items sell the most?
+Who are the top customers? — Which customers contribute the most revenue?
+Where is the business concentrated? — Is geographic dependency a risk?
+When do sales peak? — Are there seasonal patterns to plan for?
+---
+Tools & Technologies
+Tool	Purpose
+Python (Pandas)	Data cleaning & feature engineering
+PostgreSQL	Revenue & customer analysis
+Power BI	Interactive dashboard & KPI reporting
+---
+Project Workflow
+Step 1 — Data Cleaning (Python / Pandas)
+This was the most complex cleaning task in the project due to the raw transactional nature of the data:
+Removed cancelled orders — invoices starting with 'C' (e.g., C536379) represent returns/cancellations; dropped entirely
+Removed negative Quantity rows — additional return records not caught by invoice prefix
+Dropped null CustomerID rows — ~25% of rows had no CustomerID; removed as they cannot be used for customer-level analysis
+Removed zero/negative UnitPrice rows — test entries and data errors
+Engineered Revenue column — 'Revenue = Quantity × UnitPrice' (did not exist in raw data)
+Extracted time features — parsed 'InvoiceDate' to datetime; extracted 'Month', 'Year', 'Quarter' for trend analysis
+Before vs After Cleaning:
+Metric	Raw Data	Cleaned Data
+Total Rows	~541,909	~397,924
+Null CustomerIDs	~135,080	0
+Cancelled Orders	Included	Removed
+Step 2 — SQL Analysis (PostgreSQL)
+Used Advanced SQL including CTEs, window functions, aggregations, and CASE statements.
+------Monthly Revenue Trend:
 
-## Project Overview
+SELECT
+  EXTRACT(MONTH FROM invoice_date) AS month_num,
+  TO_CHAR(invoice_date, 'Month') AS month_name,
+  ROUND(SUM(quantity * unit_price), 2) AS total_revenue,
+  COUNT(DISTINCT invoice_no) AS total_orders
+FROM ecommerce
+GROUP BY month_num, month_name
+ORDER BY month_num;
 
-This project analyzes e-commerce sales data using Python, SQL, and Power BI. It includes data cleaning, analysis, and dashboard creation to generate business insights.
+--------Revenue by Country:
 
-## Objectives
+SELECT
+  country,
+  ROUND(SUM(quantity * unit_price), 2) AS total_revenue,
+  ROUND(SUM(quantity * unit_price) * 100.0 /
+    SUM(SUM(quantity * unit_price)) OVER (), 2) AS revenue_pct
+FROM ecommerce
+GROUP BY country
+ORDER BY total_revenue DESC;
 
-* Clean and preprocess raw data
-* Analyze sales trends and customer behavior
-* Build an interactive dashboard
+--------Top 10 Customers by Revenue:
 
-## Tools Used
+WITH customer_revenue AS (
+  SELECT
+    customer_id,
+    ROUND(SUM(quantity * unit_price), 2) AS total_revenue,
+    COUNT(DISTINCT invoice_no) AS total_orders,
+    RANK() OVER (ORDER BY SUM(quantity * unit_price) DESC) AS revenue_rank
+  FROM ecommerce
+  GROUP BY customer_id
+)
+SELECT * FROM customer_revenue
+WHERE revenue_rank <= 10;
 
-* Python (Pandas)
-* SQL (PostgreSQL)
-* Power BI
+------Top 10 Products by Quantity Sold:
 
-## Project Structure
+SELECT
+  description,
+  SUM(quantity) AS total_quantity,
+  ROUND(SUM(quantity * unit_price), 2) AS total_revenue,
+  RANK() OVER (ORDER BY SUM(quantity) DESC) AS quantity_rank
+FROM ecommerce
+GROUP BY description
+ORDER BY total_quantity DESC
+LIMIT 10;
 
-ecommerce-sales-analysis/
-|
-|-- data/
-|   |-- cleaned_ecommerce.csv
-|
-|-- python/
-|   |-- data_cleaning_analysis.py
-|
-|-- sql/
-|   |-- advanced_queries.sql
-|
-|-- powerbi/
-|   |-- ecommerce_dashboard.pbix
-|
-|-- images/
-|   |-- dashboard.png
-|
-|-- README.md
+-------Average Order Value (AOV):
 
-## Data Cleaning (Python)
+SELECT
+  ROUND(SUM(quantity * unit_price) / COUNT(DISTINCT invoice_no), 2) AS avg_order_value
+FROM ecommerce;
 
-* Removed missing values and duplicates
-* Converted InvoiceDate to datetime format
-* Created new columns:
-
-  * Sales = Quantity * UnitPrice
-  * Month and Date extracted
-* Used Pandas for data processing
-
-## SQL Analysis
-
-* Monthly revenue trend
-* Top products by quantity
-* Top customers by revenue
-* Country-wise sales analysis
-
-## Dashboard (Power BI)
-
-* Total Revenue, Orders, Customers, Avg Order Value
-* Monthly Revenue Trend chart
-* Top 10 Products chart
-* Top Customers chart
-* Country-wise sales distribution
-* Map visualization
-
-## Key Insights
-
-* Revenue is mostly from the UK (~82%)
-* Few products contribute most of the sales
-* Sales are highest in Q4 (seasonal trend)
-
-## How to Run
-
-Python:
-pip install pandas numpy
-python data_cleaning_analysis.py
-
-SQL:
-Run queries in PostgreSQL / pgAdmin
-
-Power BI:
-Open ecommerce_dashboard.pbix in Power BI Desktop
-
-## Future Improvements
-
-* Add customer segmentation (RFM)
-* Automate data pipeline
-* Deploy dashboard online
-
-## Author
-
+Step 3 — Power BI Dashboard
+Monthly revenue trend line chart with data labels
+Geographic map showing sales by country
+Revenue distribution pie chart by country
+Top 10 products by quantity bar chart
+Top 10 customers by revenue bar chart
+KPI cards for headline metrics
+Slicers for Country and Month filtering
+---
+Key Findings
+Metric	Value
+Total Revenue	£8.89M
+Total Orders	19K
+Total Customers	4,338
+Average Order Value	£479.56
+Insights
+UK dominates at 88.97% of total revenue — extreme geographic concentration
+Q4 is peak season — November reaches £1.16M, the single highest month
+Revenue grows steadily through the year from £0.45M (Jan) to £1.16M (Nov)
+Top 10 customers contribute a disproportionately large share of revenue — losing one is high risk
+Paper Craft and Ceramic items lead product sales at 81K and 78K units respectively
+High AOV (£479.56) suggests many buyers are small businesses, not just individual consumers
+---
+Business Recommendations
+Expand into Netherlands, EIRE, and Germany — these markets show organic demand already; targeted campaigns could grow their share from ~6% to 15%+
+Build a VIP loyalty program for top 10 customers — revenue concentration is a risk; retain these accounts with dedicated account management
+Stock top products before October — Q4 demand surge requires early inventory planning; focus on Paper Craft and Ceramic lines
+Introduce minimum order incentives — encourage lower-spending customers to increase basket size, pushing AOV higher
+Investigate Q4 December dip — revenue drops from £1.16M (Nov) to £1.09M (Dec); could indicate fulfilment delays or stock-outs
+> Estimated impact: Geographic expansion + customer retention program could grow annual revenue by **15–20%** over 2 years.
+---
+Dashboard Preview
+![Dashboard Preview](dashboard/dashboard_preview.png)
+---
+Dataset
+Source: Online Retail Dataset — UCI Machine Learning Repository
+Records: 541,909 raw transactions (397,924 after cleaning)
+Period: December 2010 – December 2011
+Features: 8 columns — InvoiceNo, StockCode, Description, Quantity, InvoiceDate, UnitPrice, CustomerID, Country
+---
+Author
 Pravallika Mopidevi
+mopidevipravallika123@gmail.com
+GitHub
+SQL & Data Analytics | Power BI | Python
+---
+If you found this project useful, feel free to star the repository!
