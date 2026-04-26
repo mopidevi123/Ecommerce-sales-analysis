@@ -15,8 +15,6 @@ sales DECIMAL(12,2)
 );
 
 
-
-
 \copy ecommerce FROM 
 'C:\Users\mopid\Desktop\Ecommerce_customer\data\cleaned_online_retail.csv' DELIMITER ',' CSV HEADER;
 
@@ -32,6 +30,97 @@ FROM ecommerce
 GROUP BY DATE_TRUNC('month', invoice_date)
 ORDER BY Month;
 
+--------- or
+
+SELECT EXTRACT(MONTH FROM invoice_date) AS Month,
+	SUM(quantity * unit_price) AS revenue
+FROM ecommerce
+GROUP BY EXTRACT(MONTH FROM invoice_date)
+ORDER BY Month;
+
+
+------Monthly Revenue Trend:
+
+SELECT
+  EXTRACT(MONTH FROM invoice_date) AS month_num,
+  TO_CHAR(invoice_date, 'Month') AS month_name,
+  ROUND(SUM(quantity * unit_price), 2) AS total_revenue,
+  COUNT(DISTINCT invoice_no) AS total_orders
+FROM ecommerce
+GROUP BY month_num, month_name
+ORDER BY month_num;
+
+--------Revenue by Country:
+
+SELECT
+  country,
+  ROUND(SUM(quantity * unit_price), 2) AS total_revenue,
+  ROUND(SUM(quantity * unit_price) * 100.0 /
+    SUM(SUM(quantity * unit_price)) OVER (), 2) AS revenue_pct
+FROM ecommerce
+GROUP BY country
+ORDER BY total_revenue DESC;
+
+--------Top 10 Customers by Revenue:
+
+WITH customer_revenue AS (
+  SELECT
+    customer_id,
+    ROUND(SUM(quantity * unit_price), 2) AS total_revenue,
+    COUNT(DISTINCT invoice_no) AS total_orders,
+    RANK() OVER (ORDER BY SUM(quantity * unit_price) DESC) AS revenue_rank
+  FROM ecommerce
+  GROUP BY customer_id
+)
+SELECT * FROM customer_revenue
+WHERE revenue_rank <= 10;
+
+------Top 10 Products by Quantity Sold:
+
+SELECT
+  description,
+  SUM(quantity) AS total_quantity,
+  ROUND(SUM(quantity * unit_price), 2) AS total_revenue,
+  RANK() OVER (ORDER BY SUM(quantity) DESC) AS quantity_rank
+FROM ecommerce
+GROUP BY description
+ORDER BY total_quantity DESC
+LIMIT 10;
+
+-------Average Order Value (AOV):
+
+SELECT
+  ROUND(SUM(quantity * unit_price) / COUNT(DISTINCT invoice_no), 2) AS avg_order_value
+FROM ecommerce;
+
+
+
+
+------- Revenue by country
+
+SELECT country,
+		SUM(quantity * unit_price) AS revenue
+FROM ecommerce
+GROUP BY country
+ORDER BY revenue DESC;
+
+-------or
+
+SELECT country,
+		SUM(sales) AS revenue
+FROM ecommerce
+GROUP BY country
+ORDER BY revenue DESC;
+
+
+-------Top products by quality
+
+SELECT description,
+		SUM(quantity) AS total_quantity,
+		RANK() OVER (ORDER BY SUM(quantity) DESC) AS rnk
+FROM ecommerce
+GROUP BY description;
+
 
 ---------- 2. Top customers 
 
@@ -43,6 +132,52 @@ SELECT * FROM (
 		GROUP BY customer_id
 ) t
 WHERE rank <= 10;
+
+
+------ Top 10 customers by revenue
+
+WITH customer_revenue AS (
+SELECT customer_id,
+		ROUND(SUM(quantity * unit_price), 2) AS total_revenue,
+		COUNT(DISTINCT invoice_no) AS total_orders,
+		ROUND(AVG(quantity * unit_price), 2) AS avg_order_value,
+		RANK() OVER (ORDER BY SUM(quantity * unit_price) DESC) AS revenue_rnk
+FROM ecommerce
+GROUP BY customer_id
+)
+SELECT * FROM customer_revenue
+WHERE revenue_rnk <= 10
+ORDER BY revenue_rnk;
+
+
+------Customers who haven't purchased in the last 3 months
+
+SELECT customer_id,
+		MAX(invoice_date) AS last_purchase_date,
+		CURRENT_DATE - MAX(invoice_date) AS days_since_purchase
+FROM ecommerce
+GROUP BY customer_id
+HAVING MAX(invoice_date) < CURRENT_DATE - INTERVAL '3 months'
+ORDER BY last_purchase_date ASC;
+
+
+
+------- Month over month revenue growth
+
+WITH monthly_revenue AS (
+SELECT EXTRACT(MONTH FROM invoice_date) AS month_num,
+		ROUND(SUM(quantity * unit_price), 2) AS revenue
+FROM ecommerce
+GROUP BY month_num
+),
+growth AS (
+SELECT month_num,revenue,
+		LAG(revenue) OVER(ORDER BY month_num) AS prev_month_revenue
+FROM monthly_revenue
+)
+SELECT month_num,revenue,prev_month_revenue,
+		ROUND((revenue - prev_month_revenue) * 100.0 / prev_month_revenue, 2) AS growth_pct
+FROM growth;
 
 
 
